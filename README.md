@@ -1,51 +1,94 @@
-## Foundry
+# Roulette
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+An on-chain **American roulette** game (38 pockets: `0`, `00`, and `1`–`36`) whose
+spins are resolved with **Chainlink VRF v2.5** for provably fair randomness. Built
+with [Foundry](https://book.getfoundry.sh/).
 
-Foundry consists of:
+Players fund an internal balance, place bets against the wheel, and anyone can spin.
+When Chainlink returns the random pocket, every pending bet is settled in one shot and
+winnings are credited to player balances for withdrawal.
 
-- **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
-- **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
-- **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
-- **Chisel**: Fast, utilitarian, and verbose solidity REPL.
+## How it works
 
-## Documentation
-
-https://book.getfoundry.sh/
-
-## Usage
-
-### Build
-
-```shell
-$ forge build
+```
+deposit()  ->  bet()  ->  roll()  ->  [Chainlink VRF]  ->  fulfillRandomWords()  ->  withdraw()
+  fund       stake       request       random word          settle all bets         cash out
+ balance    a wager     randomness                          credit winnings
 ```
 
-### Test
+1. **`deposit()`** — send ETH to credit your internal `balance`. This is the only way for a
+   player to add funds; bets and payouts both flow through this balance.
+2. **`bet(betType, number, amount)`** — stake `amount` from your balance on a wager. The stake
+   is debited immediately. Multiple bets per round are allowed, up to a per-round cap.
+3. **`roll()`** — request a random pocket from Chainlink VRF. Callable by anyone; reverts while a
+   previous request is still pending.
+4. **`fulfillRandomWords(...)`** — the VRF callback. Derives the winning pocket
+   (`randomWord % 38`, where `37` = `00`), settles **all** players' pending bets against it,
+   credits winnings, and clears the round.
+5. **`withdraw()`** — cash your entire balance out to your address.
 
-```shell
-$ forge test
+Payout multipliers **include the returned stake** — because the stake is removed from your
+balance when the bet is placed, a winning bet credits back `amount × multiplier` and a losing
+bet credits nothing.
+
+## Bet types & payouts
+
+| `BetType` | `number` means | Wins when | Payout (incl. stake) |
+|-----------|----------------|-----------|----------------------|
+| `Number`  | pocket `0`–`37` (`37` = `00`) | pocket matches exactly | `36×` (35:1) |
+| `Sector`  | dozen `0`/`1`/`2` (1–12 / 13–24 / 25–36) | winning pocket in that dozen | `3×` (2:1) |
+| `Row`     | street `0`–`11` (three consecutive numbers) | winning pocket in that street | `12×` (11:1) |
+| `Color`   | `0` = Red, `1` = Black | color matches | `2×` (1:1) |
+| `OddEven` | `0` = Even, `1` = Odd | parity matches | `2×` (1:1) |
+| `HighLow` | `0` = Low (1–18), `1` = High (19–36) | range matches | `2×` (1:1) |
+
+The `0` and `00` pockets lose every wager **except** a straight `Number` bet placed on that
+exact pocket.
+
+## Design notes
+
+- **Provably fair** — the winning pocket comes only from Chainlink VRF; no party (including the
+  owner) can influence a spin's outcome.
+- **Bounded settlement** — settlement happens inside the VRF callback, which runs under a fixed
+  gas budget. `MAX_BETS_PER_ROUND` caps how many bets a round can hold so the callback is
+  guaranteed to finish; without it a round could accumulate enough bets to run the callback out
+  of gas and strand every stake.
+- **Deposit / bet split** — bets are drawn from a pre-funded internal balance rather than
+  `msg.value`, so wagers are always backed by real deposits and the balance ledger stays
+  consistent across deposits, stakes, winnings, and withdrawals.
+- **House reserve** — a winning round can owe more than the deposits backing it (a single 35:1
+  Number bet pays 36× its stake). The house tops up the payout reserve by sending ETH directly
+  to the contract (`receive()`), which accepts ETH **without** crediting any player balance.
+- **Per-window bet limit** — `betLimit` caps how much a single player may wager within each
+  `LIMIT_PERIOD` (1 day) window; the owner adjusts it with `setBetLimit`.
+- **Safe withdrawals** — `withdraw()` follows checks-effects-interactions (balance zeroed before
+  transfer) and uses a low-level `call`, reverting if the recipient rejects the ETH.
+
+## Project layout
+
+```
+src/Roulette.sol                 The game contract
+script/DeployRoulette.s.sol      Sepolia deployment script
+test/RoulleteTest.t.sol          Foundry test suite (22 tests)
+foundry.toml                     Build, RPC, and Etherscan config
+.env.example                     Template for deployment env vars
 ```
 
-### Format
+## Getting started
+
+Requires [Foundry](https://book.getfoundry.sh/getting-started/installation).
 
 ```shell
-$ forge fmt
+$ forge install     # fetch dependencies (Chainlink, OpenZeppelin, forge-std)
+$ forge build       # compile
+$ forge test        # run the test suite
+$ forge fmt         # format
 ```
 
-### Gas Snapshots
+The tests use `VRFCoordinatorV2_5Mock` to simulate Chainlink locally, so no live network or
+API key is needed to run them.
 
-```shell
-$ forge snapshot
-```
-
-### Anvil
-
-```shell
-$ anvil
-```
-
-### Deploy to Sepolia
+## Deploy to Sepolia
 
 The contract needs a Chainlink VRF v2.5 subscription. One-time setup at
 [vrf.chain.link](https://vrf.chain.link) (Sepolia network):
@@ -65,16 +108,9 @@ $ forge script script/DeployRoulette.s.sol:DeployRoulette \
 3. Take the printed contract address and add it as a **consumer** on the VRF
    subscription, so the coordinator can call `fulfillRandomWords` back into it.
 
-### Cast
+> The `keyHash` in the contract is the Sepolia 500 gwei gas lane. Deploying to a different
+> network requires updating that constant and the coordinator address in the deploy script.
 
-```shell
-$ cast <subcommand>
-```
+## Status
 
-### Help
-
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
-```
+⚠️ **Educational / testnet project — not audited.** Do not use with real funds on mainnet.
