@@ -4,9 +4,9 @@ An on-chain **American roulette** game (38 pockets: `0`, `00`, and `1`–`36`) w
 spins are resolved with **Chainlink VRF v2.5** for provably fair randomness. Built
 with [Foundry](https://book.getfoundry.sh/).
 
-Players fund an internal balance, place bets against the wheel, and anyone can spin.
-When Chainlink returns the random pocket, every pending bet is settled in one shot and
-winnings are credited to player balances for withdrawal.
+Players fund an internal balance and place bets against the wheel; the owner spins each
+round. When Chainlink returns the random pocket, every pending bet is settled in one shot
+and winnings are credited to player balances for withdrawal.
 
 ## How it works
 
@@ -20,7 +20,7 @@ deposit()  ->  bet()  ->  roll()  ->  [Chainlink VRF]  ->  fulfillRandomWords() 
    player to add funds; bets and payouts both flow through this balance.
 2. **`bet(betType, number, amount)`** — stake `amount` from your balance on a wager. The stake
    is debited immediately. Multiple bets per round are allowed, up to a per-round cap.
-3. **`roll()`** — request a random pocket from Chainlink VRF. Callable by anyone; reverts while a
+3. **`roll()`** — request a random pocket from Chainlink VRF. **Owner only**; reverts while a
    previous request is still pending.
 4. **`fulfillRandomWords(...)`** — the VRF callback. Derives the winning pocket
    (`randomWord % 38`, where `37` = `00`), settles **all** players' pending bets against it,
@@ -61,6 +61,8 @@ exact pocket.
   to the contract (`receive()`), which accepts ETH **without** crediting any player balance.
 - **Per-window bet limit** — `betLimit` caps how much a single player may wager within each
   `LIMIT_PERIOD` (1 day) window; the owner adjusts it with `setBetLimit`.
+- **Owner-controlled spins** — only the owner can call `roll()`, so the house decides when a
+  round closes and settles. Betting, depositing, and withdrawing remain open to all players.
 - **Safe withdrawals** — `withdraw()` follows checks-effects-interactions (balance zeroed before
   transfer) and uses a low-level `call`, reverting if the recipient rejects the ETH.
 
@@ -69,7 +71,7 @@ exact pocket.
 ```
 src/Roulette.sol                 The game contract
 script/DeployRoulette.s.sol      Sepolia deployment script
-test/RoulleteTest.t.sol          Foundry test suite (22 tests)
+test/RoulleteTest.t.sol          Foundry test suite (23 tests)
 foundry.toml                     Build, RPC, and Etherscan config
 .env.example                     Template for deployment env vars
 ```
@@ -79,7 +81,7 @@ foundry.toml                     Build, RPC, and Etherscan config
 Requires [Foundry](https://book.getfoundry.sh/getting-started/installation).
 
 ```shell
-$ forge install     # fetch dependencies (Chainlink, OpenZeppelin, forge-std)
+$ forge install     # fetch dependencies (Chainlink, forge-std)
 $ forge build       # compile
 $ forge test        # run the test suite
 $ forge fmt         # format

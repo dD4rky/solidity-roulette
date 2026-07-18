@@ -335,9 +335,10 @@ contract Roulette is VRFConsumerBaseV2Plus {
     }
 
     /// @notice Requests a random pocket from Chainlink VRF, spinning the wheel for the round.
+    ///         Owner only.
     /// @dev Reverts with {requestAlreadyPending} if a prior request has not yet been fulfilled.
-    ///      Callable by anyone; the resulting fulfillment settles all pending bets.
-    function roll() external {
+    ///      The resulting fulfillment settles all pending bets.
+    function roll() external onlyOwner {
         if (s_requestStatus == RandomRequestStatus.Pending) {
             revert requestAlreadyPending();
         }

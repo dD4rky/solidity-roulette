@@ -132,6 +132,12 @@ contract RouletteTest is Test {
         s_roulette.roll();
     }
 
+    function testRollRevertsForNonOwner() public {
+        vm.prank(address(0x123));
+        vm.expectRevert();
+        s_roulette.roll();
+    }
+
     function testRollRequest() public {
         vm.expectEmit(true, false, false, false);
         emit Roulette.RandomRequestSent(1);
