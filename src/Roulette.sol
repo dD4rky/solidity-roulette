@@ -92,7 +92,7 @@ contract Roulette is VRFConsumerBaseV2Plus {
     uint64 private constant ODD_NUMBERS_MASK = (1 << 1) | (1 << 3) | (1 << 5) | (1 << 7) | (1 << 9) | (1 << 11)
         | (1 << 13) | (1 << 15) | (1 << 17) | (1 << 19) | (1 << 21) | (1 << 23) | (1 << 25) | (1 << 27) | (1 << 29)
         | (1 << 31) | (1 << 33) | (1 << 35);
-    
+
     /// @dev Bit i set => pocket i is High (19-36, the "1" side of a HighLow bet): 18
     ///      consecutive bits starting at position 19.
     uint64 private constant HIGH_NUMBERS_MASK = ((uint64(1) << 18) - 1) << 19;
@@ -193,9 +193,6 @@ contract Roulette is VRFConsumerBaseV2Plus {
                                  ERRORS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Thrown when {withdraw} is called with a zero balance.
-    error balanceEqualZero();
-
     /// @notice Thrown when a bet would push the player past {betLimit} for the current window.
     /// @param spent  Already wagered in the window.
     /// @param amount Attempted wager.
@@ -208,8 +205,9 @@ contract Roulette is VRFConsumerBaseV2Plus {
     /// @notice Thrown when {deposit} is called with zero value.
     error zeroDeposit();
 
-    /// @notice Thrown when a bet exceeds the player's available balance.
-    /// @param requested Attempted stake.
+    /// @notice Thrown when a bet or withdrawal exceeds the player's available balance, or
+    ///         when a withdrawal amount is zero.
+    /// @param requested Attempted stake or withdrawal amount.
     /// @param available Player's current balance.
     error insufficientBalance(uint256 requested, uint256 available);
 
@@ -246,14 +244,6 @@ contract Roulette is VRFConsumerBaseV2Plus {
         }
 
         dailyLimit.spent += amount;
-        _;
-    }
-
-    /// @notice Reverts with {balanceEqualZero} unless the caller has a positive balance.
-    modifier balanceNotZero() {
-        if (players[msg.sender].balance == 0) {
-            revert balanceEqualZero();
-        }
         _;
     }
 
@@ -347,20 +337,27 @@ contract Roulette is VRFConsumerBaseV2Plus {
         _requestRandomWord();
     }
 
-    /// @notice Cashes out the caller's entire balance to their address.
-    /// @dev Follows checks-effects-interactions (balance zeroed before transfer) and uses a
+    /// @notice Cashes out part of the caller's balance to their address.
+    /// @dev Follows checks-effects-interactions (balance debited before transfer) and uses a
     ///      low-level call, reverting with {withdrawFailed} if the recipient rejects the ETH.
-    ///      Reverts with {balanceEqualZero} (via {balanceNotZero}) if there is nothing to withdraw.
-    function withdraw() external balanceNotZero {
-        uint256 amount = players[msg.sender].balance;
-        players[msg.sender].balance = 0;
+    ///      Reverts with {insufficientBalance} if `_amount` is zero or exceeds the balance;
+    ///      pass the full balance to cash out entirely.
+    /// @param _amount Amount in wei to withdraw.
+    function withdraw(uint256 _amount) external {
+        Player storage player = players[msg.sender];
 
-        (bool success,) = payable(msg.sender).call{value: amount}("");
+        if (_amount == 0 || _amount > player.balance) {
+            revert insufficientBalance(_amount, player.balance);
+        }
+
+        player.balance -= _amount;
+
+        (bool success,) = payable(msg.sender).call{value: _amount}("");
         if (!success) {
             revert withdrawFailed();
         }
 
-        emit Withdrawn(msg.sender, amount);
+        emit Withdrawn(msg.sender, _amount);
     }
 
     /// @notice Returns a player's bets pending settlement in the current round.

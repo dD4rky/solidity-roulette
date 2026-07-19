@@ -206,15 +206,45 @@ contract RouletteTest is Test {
         emit Roulette.Withdrawn(player, expectedPayout);
 
         vm.prank(player);
-        s_roulette.withdraw();
+        s_roulette.withdraw(expectedPayout); // full balance
 
         assertEq(player.balance, balanceBefore + expectedPayout);
         assertEq(s_roulette.players(player), 0);
     }
 
-    function testWithdrawRevertsWhenBalanceZero() public {
-        vm.expectRevert(Roulette.balanceEqualZero.selector);
-        s_roulette.withdraw();
+    function testWithdrawPartialLeavesRemainder() public {
+        address player = address(0xBEEF);
+        vm.deal(player, 100 ether);
+
+        vm.prank(player);
+        s_roulette.deposit{value: 5 ether}();
+
+        uint256 balanceBefore = player.balance;
+
+        vm.expectEmit(true, false, false, true);
+        emit Roulette.Withdrawn(player, 2 ether);
+
+        vm.prank(player);
+        s_roulette.withdraw(2 ether);
+
+        assertEq(player.balance, balanceBefore + 2 ether);
+        assertEq(s_roulette.players(player), 3 ether); // remainder stays credited
+    }
+
+    function testWithdrawRevertsWhenAmountZero() public {
+        s_roulette.deposit{value: 1 ether}();
+
+        vm.expectRevert(abi.encodeWithSelector(Roulette.insufficientBalance.selector, uint256(0), uint256(1 ether)));
+        s_roulette.withdraw(0);
+    }
+
+    function testWithdrawRevertsWhenAmountExceedsBalance() public {
+        s_roulette.deposit{value: 1 ether}();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(Roulette.insufficientBalance.selector, uint256(2 ether), uint256(1 ether))
+        );
+        s_roulette.withdraw(2 ether);
     }
 
     function testWithdrawRevertsWhenRecipientRejectsEth() public {
@@ -238,7 +268,7 @@ contract RouletteTest is Test {
         s_vrfCoordinatorMock.fulfillRandomWordsWithOverride(requestId, address(s_roulette), words);
 
         vm.expectRevert(Roulette.withdrawFailed.selector);
-        rejecting.callWithdraw();
+        rejecting.callWithdraw(betAmount);
     }
 
     // Winning number used below: 15 -> dozen 1 (13-24), row 4 (13,14,15), black, odd, low (1-18).
@@ -370,7 +400,7 @@ contract RejectingReceiver {
         roulette.bet(betType, number, amount);
     }
 
-    function callWithdraw() external {
-        roulette.withdraw();
+    function callWithdraw(uint256 amount) external {
+        roulette.withdraw(amount);
     }
 }

@@ -25,7 +25,8 @@ deposit()  ->  bet()  ->  roll()  ->  [Chainlink VRF]  ->  fulfillRandomWords() 
 4. **`fulfillRandomWords(...)`** — the VRF callback. Derives the winning pocket
    (`randomWord % 38`, where `37` = `00`), settles **all** players' pending bets against it,
    credits winnings, and clears the round.
-5. **`withdraw()`** — cash your entire balance out to your address.
+5. **`withdraw(amount)`** — cash `amount` of your balance out to your address (pass your full
+   balance to withdraw everything).
 
 Payout multipliers **include the returned stake** — because the stake is removed from your
 balance when the bet is placed, a winning bet credits back `amount × multiplier` and a losing
@@ -71,7 +72,7 @@ exact pocket.
 ```
 src/Roulette.sol                 The game contract
 script/DeployRoulette.s.sol      Sepolia deployment script
-test/RoulleteTest.t.sol          Foundry test suite (23 tests)
+test/RoulleteTest.t.sol          Foundry test suite (25 tests)
 foundry.toml                     Build, RPC, and Etherscan config
 .env.example                     Template for deployment env vars
 ```
