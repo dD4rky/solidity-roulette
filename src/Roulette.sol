@@ -92,6 +92,7 @@ contract Roulette is VRFConsumerBaseV2Plus {
     uint64 private constant ODD_NUMBERS_MASK = (1 << 1) | (1 << 3) | (1 << 5) | (1 << 7) | (1 << 9) | (1 << 11)
         | (1 << 13) | (1 << 15) | (1 << 17) | (1 << 19) | (1 << 21) | (1 << 23) | (1 << 25) | (1 << 27) | (1 << 29)
         | (1 << 31) | (1 << 33) | (1 << 35);
+    
     /// @dev Bit i set => pocket i is High (19-36, the "1" side of a HighLow bet): 18
     ///      consecutive bits starting at position 19.
     uint64 private constant HIGH_NUMBERS_MASK = ((uint64(1) << 18) - 1) << 19;
@@ -131,7 +132,7 @@ contract Roulette is VRFConsumerBaseV2Plus {
     uint256 public s_subscriptionId;
 
     /// @notice VRF key hash (gas lane) used for requests. Defaults to the Sepolia 500 gwei lane.
-    bytes32 public keyHash = 0x474e34a077df58807dbe9c96d3c009b23b3c6d0cce433e59bbf5b34f823bc56c;
+    bytes32 public keyHash = 0x787d74caea10b2b357790d5b5247c2f63d1d91572a9846f780606e4d953677ae;
 
     /// @notice Gas forwarded to {fulfillRandomWords} by the coordinator.
     /// @dev Sized with headroom over MAX_BETS_PER_ROUND * (worst-case per-bet settlement cost).
@@ -406,7 +407,7 @@ contract Roulette is VRFConsumerBaseV2Plus {
                 requestConfirmations: 3,
                 callbackGasLimit: callbackGasLimit,
                 numWords: WORDS_COUNT,
-                extraArgs: VRFV2PlusClient._argsToBytes(VRFV2PlusClient.ExtraArgsV1({nativePayment: false}))
+                extraArgs: VRFV2PlusClient._argsToBytes(VRFV2PlusClient.ExtraArgsV1({nativePayment: true}))
             })
         );
         s_requestStatus = RandomRequestStatus.Pending;
